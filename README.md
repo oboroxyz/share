@@ -81,6 +81,8 @@ Browser                                     │
 
 The CLI uploads files to R2 and writes metadata to KV keyed by `slug:<slug>`. The Worker on your custom domain looks up slugs, streams files from R2 with range request support (for video/audio streaming), and increments download counters.
 
+Every response carries a `Content-Disposition` header with the original filename so downloads keep their extension regardless of browser or OS (the slug in the URL has no extension; without this header some browsers save the file extensionless). Previewable types — `text/*`, anything containing `json`/`xml`/`javascript`, `image/*`, `audio/*`, `video/*`, and `application/pdf` — are served `inline` so the link still renders in-tab. Everything else (all archives: `.7z`, `.zip`, `.tar`, `.gz`, `.rar`, …; binaries; unknown `application/octet-stream`) is served `attachment` and downloads with the correct name.
+
 ## Self-hosting
 
 ### Prerequisites

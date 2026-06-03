@@ -85,6 +85,31 @@ async function serveR2Direct(
 	return new Response(object.body, { headers });
 }
 
+// Browsers derive the saved filename from the URL's last path segment
+// (our extensionless slug) unless we send Content-Disposition. Without it,
+// only browsers that happen to map the MIME type back to an extension add
+// one — so the same 7z saves as "seeds.7z" on Chrome/macOS but as a bare,
+// extensionless "oecHV" elsewhere. Always emit the stored name. Preview-able
+// types stay `inline` so clicking the link still renders them in-browser;
+// everything else is `attachment`. filename* (RFC 5987) carries non-ASCII.
+function dispositionFor(meta: FileMeta): string {
+	const ct = meta.content_type;
+	// Anything a browser renders natively stays `inline` so the link still
+	// previews in-tab; only opaque binaries get `attachment`. Mirrors the
+	// isText heuristic used for charset tagging, plus media + pdf. svg/xml/
+	// json/js live under application/* so substring-match them too.
+	const viewable =
+		/^(image|video|audio)\//.test(ct) ||
+		ct === "application/pdf" ||
+		ct.startsWith("text/") ||
+		ct.includes("json") ||
+		ct.includes("xml") ||
+		ct.includes("javascript");
+	const disp = viewable ? "inline" : "attachment";
+	const ascii = meta.name.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+	return `${disp}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(meta.name)}`;
+}
+
 async function serveFile(
 	meta: FileMeta,
 	request: Request,
@@ -99,6 +124,7 @@ async function serveFile(
 		headers.set("Content-Length", meta.size.toString());
 		headers.set("Accept-Ranges", "bytes");
 		headers.set("Cache-Control", "public, max-age=86400");
+		headers.set("Content-Disposition", dispositionFor(meta));
 		return new Response(null, { headers });
 	}
 
@@ -117,6 +143,7 @@ async function serveFile(
 	headers.set("Content-Type", isBinary ? meta.content_type : `${meta.content_type}; charset=utf-8`);
 	headers.set("Accept-Ranges", "bytes");
 	headers.set("Cache-Control", "public, max-age=86400");
+	headers.set("Content-Disposition", dispositionFor(meta));
 
 	if (range && object.range) {
 		const r = object.range as { offset: number; length: number };
