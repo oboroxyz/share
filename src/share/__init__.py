@@ -75,7 +75,7 @@ def kv_put(config: dict, cf: cloudflare.Cloudflare, key: str, value: dict) -> No
         key_name=key,
         account_id=config["cloudflare"]["account_id"],
         namespace_id=config["cloudflare"]["kv_namespace_id"],
-        value=json.dumps(value),
+        value=json.dumps(value).encode(),
         metadata=json.dumps({"name": value["name"], "size": value["size"]}),
     )
 
@@ -85,7 +85,7 @@ def kv_put_raw(config: dict, cf: cloudflare.Cloudflare, key: str, value: dict) -
         key_name=key,
         account_id=config["cloudflare"]["account_id"],
         namespace_id=config["cloudflare"]["kv_namespace_id"],
-        value=json.dumps(value),
+        value=json.dumps(value).encode(),
         metadata="{}",
     )
 
