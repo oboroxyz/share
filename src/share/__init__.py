@@ -231,7 +231,12 @@ def cmd_upload(args: argparse.Namespace) -> None:
     name = args.name or path.name
     slug = generate_slug(getattr(args, "slug", None))
     date_prefix = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    r2_key = f"{date_prefix}/{name}"
+    # The slug (unique per upload, asserted below) is part of the object
+    # key: two uploads can NEVER share or overwrite an object. Keying by
+    # date/name alone made same-day same-name uploads share one object -
+    # the second upload silently replaced the first's bytes, and deleting
+    # either slug 404'd the survivor.
+    r2_key = f"{date_prefix}/{slug}/{name}"
     content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
 
     s3 = r2_client(config)
@@ -375,8 +380,20 @@ def cmd_rm(args: argparse.Namespace) -> None:
 
     target = matches[0]
 
+    # Legacy entries (pre slug-keyed objects) could share one r2_key:
+    # deleting this slug's object would 404 every other slug pointing at
+    # it. Unlink the slug alone and leave the shared bytes to the
+    # survivors.
+    shared = [
+        f
+        for f in files
+        if f.get("slug") != target.get("slug")
+        and f.get("r2_key")
+        and f.get("r2_key") == target.get("r2_key")
+    ]
+
     with console.status("Deleting..."):
-        if target.get("type") != "link":
+        if target.get("type") != "link" and not shared:
             s3 = r2_client(config)
             s3.delete_object(
                 Bucket=config["cloudflare"]["bucket"], Key=target["r2_key"]
@@ -385,6 +402,11 @@ def cmd_rm(args: argparse.Namespace) -> None:
 
     label = target.get("name") or target.get("url", "")
     console.print(f"[red]Deleted {label} (/{target.get('slug', '')})[/red]")
+    if shared:
+        others = ", ".join(f"/{f.get('slug', '?')}" for f in shared)
+        console.print(
+            f"[yellow]Object kept: {target['r2_key']} is still served by {others}[/yellow]"
+        )
 
 
 def cmd_link(args: argparse.Namespace) -> None:

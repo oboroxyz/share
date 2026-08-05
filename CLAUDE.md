@@ -11,7 +11,7 @@
 ## KV
 
 Single key per entry: `slug:<slug>` → metadata dict. Two types:
-- **file**: `{name, size, content_type, uploaded_at, downloads, r2_key, slug, public}`
+- **file**: `{name, size, content_type, uploaded_at, downloads, r2_key, slug, public}`. `r2_key` = `YYYY-MM-DD/<slug>/<name>` — the slug in the key makes every upload's object unique; keying by date/name alone let same-day same-name uploads share ONE object (second upload silently replaced the first's bytes; `rm` of either slug 404'd the survivor — burned live 2026-08-05). `rm` still guards legacy shared keys: it unlinks only the slug and keeps the object when another entry references the same `r2_key`.
 - **link**: `{type: "link", url, slug, created_at, clicks, public}`
 
 Python SDK writes KV values with a `{metadata, value}` wrapper. Both CLI and Worker handle unwrapping via `_parse_kv_value` / `parseKVValue`.
