@@ -10,7 +10,7 @@ import sys
 import tempfile
 import time
 import tomllib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import boto3
@@ -189,6 +189,7 @@ def _strip_video_metadata(path: Path) -> tuple[Path | None, bool]:
             str(temp_path),
         ],
         capture_output=True,
+        check=False,
     )
     assert result.returncode == 0, (
         f"ffmpeg metadata strip failed: {result.stderr.decode()}"
@@ -230,7 +231,7 @@ def cmd_upload(args: argparse.Namespace) -> None:
     config = load_config()
     name = args.name or path.name
     slug = generate_slug(getattr(args, "slug", None))
-    date_prefix = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_prefix = datetime.now(UTC).strftime("%Y-%m-%d")
     # The slug (unique per upload, asserted below) is part of the object
     # key: two uploads can NEVER share or overwrite an object. Keying by
     # date/name alone made same-day same-name uploads share one object -
@@ -276,7 +277,7 @@ def cmd_upload(args: argparse.Namespace) -> None:
         "name": name,
         "size": size,
         "content_type": content_type,
-        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "uploaded_at": datetime.now(UTC).isoformat(),
         "downloads": 0,
         "r2_key": r2_key,
         "slug": slug,
@@ -422,7 +423,7 @@ def cmd_link(args: argparse.Namespace) -> None:
         "type": "link",
         "url": args.url,
         "slug": slug,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "clicks": 0,
         "public": args.public,
     }
@@ -464,7 +465,7 @@ def cmd_setup(args: argparse.Namespace) -> None:
     try:
         s3.head_bucket(Bucket=bucket)
         console.print(f"[green]Bucket '{bucket}' exists.[/green]")
-    except Exception:
+    except s3.exceptions.ClientError:
         console.print(f"[yellow]Creating bucket '{bucket}'...[/yellow]")
         s3.create_bucket(Bucket=bucket)
         console.print(f"[green]Bucket '{bucket}' created.[/green]")
