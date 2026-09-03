@@ -5,7 +5,7 @@
 - `src/share/__init__.py` — single-file CLI (argparse, boto3 for R2, cloudflare SDK for KV, sqids for slugs)
 - `worker/src/index.ts` — Cloudflare Worker (serves files from R2 via slug lookup, range requests, download tracking, landing page)
 - `worker/wrangler.toml` — Worker config (R2 binding, KV binding, custom domain route)
-- `~/.config/share/config.toml` — User config (credentials, bucket, domain)
+- `~/.config/share/config.toml` — User config (credentials, bucket, domain). Adrian's copy is never typed: the 1Password item `share cli` (Private) holds all seven values and `mise -C ~/self/mac run secrets` writes the file from it (the binary itself is installed by the `projects` task). Rotate = update the item, trash the file, rerun.
 - `config.example.toml` — Reference config
 
 ## KV
