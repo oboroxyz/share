@@ -115,7 +115,10 @@ def snapshot(root: Path, files: list[BundleFile], destination: Path) -> None:
     """
     if not hasattr(os, "O_NOFOLLOW") or os.open not in os.supports_dir_fd:
         raise BundleError("Safe bundle staging currently requires macOS or Linux")
-    root_fd = os.open(root.resolve(), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as error:
+        raise BundleError(f"Cannot safely open bundle root: {error}") from error
     try:
         for file in files:
             directory_fd = os.dup(root_fd)
