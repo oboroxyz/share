@@ -19,6 +19,8 @@ from rich.console import Console
 from rich.table import Table
 from sqids import Sqids
 
+from .bundle import BundleError, add_parser, cmd_bundle, delete_bundle, slug_from_url
+
 CONFIG_PATH = Path.home() / ".config" / "share" / "config.toml"
 console = Console()
 sqids = Sqids()
@@ -308,7 +310,7 @@ def cmd_ls(args: argparse.Namespace) -> None:
     link_entries = [f for f in files if f.get("type") == "link"]
 
     if file_entries:
-        table = Table(title="Files")
+        table = Table(title="Files / bundles")
         table.add_column("Slug", style="green")
         table.add_column("Name", style="cyan")
         table.add_column("Size", style="yellow", justify="right")
@@ -322,15 +324,15 @@ def cmd_ls(args: argparse.Namespace) -> None:
             vis = "pub" if f.get("public") else ""
             table.add_row(
                 f.get("slug", ""),
-                f["name"],
+                f["name"] + (f" (bundle: {f['file_count']} files)" if f.get("type") == "bundle" else ""),
                 _format_size(f["size"]),
                 f["uploaded_at"][:10],
-                str(f["downloads"]),
+                "—" if f.get("type") == "bundle" else str(f["downloads"]),
                 vis,
             )
         console.print(table)
         console.print(
-            f"[dim]{len(file_entries)} files, {total_size / 1_073_741_824:.2f} GB (10 GB free)[/dim]\n"
+            f"[dim]{len(file_entries)} file/bundle shares, {total_size / 1_073_741_824:.2f} GB (10 GB free)[/dim]\n"
         )
 
     if link_entries:
@@ -361,6 +363,7 @@ def cmd_rm(args: argparse.Namespace) -> None:
 
     with console.status("Loading..."):
         files = kv_list(config, cf)
+    url_slug = slug_from_url(args.name, config["urls"]["public_base"])
     matches = [
         f
         for f in files
@@ -369,6 +372,9 @@ def cmd_rm(args: argparse.Namespace) -> None:
         or f.get("r2_key") == args.name
         or f.get("url") == args.name
     ]
+
+    if url_slug is not None:
+        matches = [f for f in files if f.get("slug") == url_slug]
 
     assert matches, f"Not found: {args.name}. Use slug, filename, URL, or r2_key."
     if len(matches) > 1:
@@ -380,6 +386,9 @@ def cmd_rm(args: argparse.Namespace) -> None:
         return
 
     target = matches[0]
+    if target.get("type") == "bundle":
+        delete_bundle(config, cf, target, files)
+        return
 
     # Legacy entries (pre slug-keyed objects) could share one r2_key:
     # deleting this slug's object would 404 every other slug pointing at
@@ -533,14 +542,16 @@ def main():
         "--strip-metadata", action="store_true", help="Strip metadata before upload"
     )
 
+    add_parser(sub)
+
     p_link = sub.add_parser("link", help="Shorten a URL")
     p_link.add_argument("url", help="URL to shorten")
     p_link.add_argument("--slug", help="Custom slug (auto-generated if omitted)")
     p_link.add_argument("--public", action="store_true", help="Show on landing page")
 
-    sub.add_parser("ls", help="List files and links")
+    sub.add_parser("ls", help="List files, bundles, and links")
 
-    p_rm = sub.add_parser("rm", help="Delete a file or link")
+    p_rm = sub.add_parser("rm", help="Delete a file, bundle, or link")
     p_rm.add_argument("name", help="Slug, filename, URL, or r2_key to delete")
 
     sub.add_parser("setup", help="Configure Cloudflare credentials")
@@ -550,10 +561,15 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    {
+    commands = {
+        "bundle": cmd_bundle,
         "upload": cmd_upload,
         "link": cmd_link,
         "ls": cmd_ls,
         "rm": cmd_rm,
         "setup": cmd_setup,
-    }[args.command](args)
+    }
+    try:
+        commands[args.command](args)
+    except BundleError as error:
+        parser.exit(1, f"share: {error}\n")

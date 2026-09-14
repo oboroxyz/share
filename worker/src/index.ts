@@ -1,3 +1,5 @@
+import { escapeHTML, serveBundle } from "./bundle.ts";
+
 interface Env {
 	R2: R2Bucket;
 	KV: KVNamespace;
@@ -12,6 +14,8 @@ interface FileMeta {
 	uploaded_at: string;
 	downloads: number;
 	r2_key: string;
+	r2_prefix?: string;
+	file_count?: number;
 	slug: string;
 	public?: boolean;
 	url?: string;
@@ -43,16 +47,20 @@ export default {
 };
 
 async function serveSlug(
-	slug: string,
+	path: string,
 	request: Request,
 	env: Env
 ): Promise<Response> {
+	const slug = path.split("/")[0];
+	if (slug === "__bundles__") return notFound(env);
 	const raw = await env.KV.get(`slug:${slug}`);
 	if (!raw) {
-		return serveR2Direct(slug, request, env);
+		return serveR2Direct(path, request, env);
 	}
 
 	const meta = parseKVValue(raw);
+	if (meta.type === "bundle") return serveBundle(meta, request, env);
+	if (path !== slug) return notFound(env);
 
 	if (meta.type === "link") {
 		meta.clicks = (meta.clicks || 0) + 1;
@@ -177,9 +185,9 @@ function parseRange(rangeHeader: string, totalSize: number): { offset: number; l
 }
 
 async function statsAPI(env: Env): Promise<Response> {
-	const files = await listFiles(env);
+	const files = (await listFiles(env)).filter((entry) => entry.public === true);
 	return new Response(JSON.stringify(files), {
-		headers: { "Content-Type": "application/json" },
+		headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
 	});
 }
 
@@ -257,17 +265,17 @@ async function landingPage(env: Env): Promise<Response> {
 	const rows = publicEntries
 		.map((f) => {
 			const isLink = f.type === "link";
-			const name = isLink ? `<a href="/${f.slug}">${f.slug}</a>` : `<a href="/${f.slug}">${f.name}</a>`;
-			const detail = isLink ? `<a href="${f.url}">${f.url}</a>` : formatSize(f.size);
-			const hits = isLink ? (f.clicks || 0) : f.downloads;
+			const sharePath = f.slug + (f.type === "bundle" ? "/" : "");
+			const name = `<a href="/${escapeHTML(sharePath)}">${escapeHTML(isLink ? f.slug : f.name)}</a>`;
+			const detail = isLink ? escapeHTML(f.url || "") : formatSize(f.size);
+			const hits = f.type === "bundle" ? "—" : isLink ? (f.clicks || 0) : f.downloads;
 			return `
 		<tr>
 			<td>${name}</td>
 			<td>${detail}</td>
 			<td class="r">${hits}</td>
 			<td class="copy-cell">
-				<button class="copy-btn" onclick="copy('icecube.to/${f.slug}')" title="Copy icecube.to link">📋</button>
-				<button class="copy-btn" onclick="copy('🧊.to/${f.slug}')" title="Copy 🧊.to link">🧊</button>
+				<button class="copy-btn" data-url="${escapeHTML(`https://${env.SITE_NAME}/${sharePath}`)}" onclick="copy(this.dataset.url)" title="Copy link">📋</button>
 			</td>
 		</tr>`;
 		})
@@ -360,7 +368,7 @@ async function landingPage(env: Env): Promise<Response> {
 	<div class="toast" id="toast"></div>
 	<script>
 	function copy(url) {
-		navigator.clipboard.writeText('https://' + url).then(() => {
+		navigator.clipboard.writeText(url).then(() => {
 			const t = document.getElementById('toast');
 			t.textContent = url + ' copied';
 			t.classList.add('show');

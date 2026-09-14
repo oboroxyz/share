@@ -1,0 +1,36 @@
+name: Bundle tests
+
+on:
+  push:
+    branches: [feature/bundle]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync --dev --python 3.12
+      - name: Unit tests (mocked R2 and KV)
+        run: PYTHONPATH=src uv run python -m unittest discover -s tests -v
+      - name: Lint
+        run: uv run ruff check
+      - name: Formatting diff
+        run: uv run ruff format --diff
+
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Worker unit tests (mocked R2 and KV)
+        working-directory: worker
+        run: npm test

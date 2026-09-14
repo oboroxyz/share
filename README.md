@@ -44,15 +44,25 @@ share upload <file> --slug <name>           # custom slug
 share upload <file> --public                # show on landing page (default: private)
 share upload <file> --name <name>           # override download filename
 share upload <file> --keep-metadata         # skip EXIF/metadata stripping
+share bundle <directory>                   # share related files under one URL
+share bundle <directory> --dry-run         # inspect included/excluded paths first
+share bundle <directory> --entry <path>    # choose a bundle entry point
 share link <url>                            # shorten a URL
 share link <url> --slug <name>              # custom slug for short link
 share link <url> --public                   # show on landing page
-share ls                                    # list all files and links
+share ls                                    # list all files, bundles, and links
 share rm <slug>                             # delete by slug, filename, URL, or r2_key
 share setup                                 # interactive first-time config
 ```
 
-Uploads strip EXIF/metadata by default (images via Pillow, videos via ffmpeg).
+Single-file uploads strip EXIF/metadata by default (images via Pillow, videos via ffmpeg).
+
+Bundles preserve files byte-for-byte and are **unlisted by default**, with random
+128-bit slugs. HTML output keeps relative assets together; other collections get
+a file listing. `share rm <slug>` removes the whole shared bundle, not local files.
+Both the CLI and Worker need updating. See [bundle usage, safety, and lifecycle](docs/bundles.md)
+for limits, exclusions, relative asset paths, and upgrade/testing instructions.
+Unlisted links are not authentication: anyone with the URL can access the files.
 
 ## Install
 
@@ -81,7 +91,7 @@ Browser                                     │
 
 The CLI uploads files to R2 and writes metadata to KV keyed by `slug:<slug>`. The Worker on your custom domain looks up slugs, streams files from R2 with range request support (for video/audio streaming), and increments download counters.
 
-Every response carries a `Content-Disposition` header with the original filename so downloads keep their extension regardless of browser or OS (the slug in the URL has no extension; without this header some browsers save the file extensionless). Previewable types — `text/*`, anything containing `json`/`xml`/`javascript`, `image/*`, `audio/*`, `video/*`, and `application/pdf` — are served `inline` so the link still renders in-tab. Everything else (all archives: `.7z`, `.zip`, `.tar`, `.gz`, `.rar`, …; binaries; unknown `application/octet-stream`) is served `attachment` and downloads with the correct name.
+File responses carry a `Content-Disposition` header with the original filename so downloads keep their extension regardless of browser or OS (the slug in the URL has no extension; without this header some browsers save the file extensionless). Previewable types — `text/*`, anything containing `json`/`xml`/`javascript`, `image/*`, `audio/*`, `video/*`, and `application/pdf` — are served `inline` so the link still renders in-tab. Everything else (all archives: `.7z`, `.zip`, `.tar`, `.gz`, `.rar`, …; binaries; unknown `application/octet-stream`) is served `attachment` and downloads with the correct name.
 
 ## Self-hosting
 
@@ -200,4 +210,5 @@ R2's S3 endpoint uses TLS that some VPNs break. If uploads fail with SSL errors,
 ```
 slug:<slug> → file: { type?, name, size, content_type, uploaded_at, downloads, r2_key, slug, public }
 slug:<slug> → link: { type: "link", url, slug, created_at, clicks, public }
+slug:<slug> → bundle: { type: "bundle", name, size, file_count, r2_prefix, entry, slug, uploaded_at, downloads: 0, public }
 ```
