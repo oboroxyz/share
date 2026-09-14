@@ -177,9 +177,10 @@ function parseRange(rangeHeader: string, totalSize: number): { offset: number; l
 }
 
 async function statsAPI(env: Env): Promise<Response> {
-	const files = await listFiles(env);
+	// This endpoint is public; never enumerate unlisted shares.
+	const files = (await listFiles(env)).filter((entry) => entry.public === true);
 	return new Response(JSON.stringify(files), {
-		headers: { "Content-Type": "application/json" },
+		headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
 	});
 }
 
